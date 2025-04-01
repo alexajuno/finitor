@@ -49,6 +49,12 @@ python -m finitor view --id 1
 
 # View transactions by date range
 python -m finitor view --start-date "2024-03-01" --end-date "2024-03-31"
+
+# View transactions for a specific date
+python -m finitor view --date "2024-03-15"
+
+# View transactions with full amount values
+python -m finitor view --full-amounts
 ```
 
 View summaries:
@@ -63,9 +69,34 @@ python -m finitor summary --type source
 python -m finitor summary --month 3 --year 2024
 ```
 
+View balance:
+```bash
+# View balance with shortened format (default)
+python -m finitor balance
+
+# View full balance without abbreviations
+python -m finitor balance --full
+```
+
 Export transactions:
 ```bash
+# Export to JSON (default)
 python -m finitor export --start-date "2024-03-01" --end-date "2024-03-31"
+
+# Export to CSV
+python -m finitor export --start-date "2024-03-01" --end-date "2024-03-31" --format csv
+
+# Export to Excel
+python -m finitor export --start-date "2024-03-01" --end-date "2024-03-31" --format excel
+
+# Export to HTML
+python -m finitor export --start-date "2024-03-01" --end-date "2024-03-31" --format html
+
+# Export a single day's transactions
+python -m finitor export --date "2024-03-15" --format excel
+
+# Export with full amount values
+python -m finitor export --date "2024-03-15" --format csv --full-amounts
 ```
 
 ### Interactive Mode
@@ -119,4 +150,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - Inspired by personal finance tracking needs
 - Built with Python and SQLite
-- Uses Click for CLI interface 
+- Uses Click for CLI interface
+- Uses pandas for data manipulation and export
+- Uses tabulate for formatted table output 

@@ -2,8 +2,14 @@ from typing import List, Tuple
 from tabulate import tabulate
 from ..core.currency import format_amount
 
-def print_transaction_table(transactions: List[Tuple]):
-    """Print transactions in a formatted table"""
+def print_transaction_table(transactions: List[Tuple], full_amounts: bool = False):
+    """
+    Print transactions in a formatted table
+    
+    Parameters:
+    transactions (List[Tuple]): The list of transactions to display
+    full_amounts (bool): If True, display the full amount without abbreviations
+    """
     if not transactions:
         print("No transactions found.")
         return
@@ -13,7 +19,7 @@ def print_transaction_table(transactions: List[Tuple]):
     for t in transactions:
         table_data.append([
             t[0],  # ID
-            format_amount(t[1]),  # Amount
+            format_amount(t[1], full=full_amounts),  # Amount
             t[2],  # Description
             t[3] or 'N/A',  # Category
             t[4] or 'N/A',  # Source

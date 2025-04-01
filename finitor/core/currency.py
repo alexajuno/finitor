@@ -19,8 +19,20 @@ def parse_amount(amount_str: str) -> float:
     else:
         return float(amount_str)
 
-def format_amount(amount: float) -> str:
-    """Format amount as VND with appropriate suffix"""
+def format_amount(amount: float, full: bool = False) -> str:
+    """
+    Format amount as VND with appropriate suffix
+    
+    Parameters:
+    amount (float): The amount to format
+    full (bool): If True, display the full amount without abbreviations
+    
+    Returns:
+    str: The formatted amount
+    """
+    if full:
+        return f"{amount:,.0f} VND"
+    
     if amount >= 1000000000:
         return f"{amount/1000000000:.1f}b VND"
     elif amount >= 1000000:
