@@ -5,112 +5,81 @@ import json
 from pathlib import Path
 
 class FinanceDB:
-    def __init__(self, db_path: str = 'transactions.db'):
-        self.db_path = db_path
-        self._init_db()
+    def __init__(self, db_name: str = "finance.db"):
+        self.db_name = db_name
+        self.default_currency = "VND"
+        self.init_db()
     
-    def _init_db(self):
+    def init_db(self):
         """Initialize the database with required tables"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             
-            # Create transactions table
+            # Create transactions table with currency support
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS transactions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    amount REAL NOT NULL,
+                    amount DECIMAL(10,2) NOT NULL,
                     description TEXT NOT NULL,
                     category TEXT,
                     source TEXT,
-                    date TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    is_recurring BOOLEAN DEFAULT 0,
-                    recurring_frequency TEXT,
-                    next_date TEXT,
-                    tags TEXT,
-                    notes TEXT
+                    date DATE NOT NULL,
+                    currency TEXT DEFAULT 'VND',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
             
-            # Create budgets table
+            # Check if currency column exists, add it if not
+            cursor.execute("PRAGMA table_info(transactions)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            if 'currency' not in columns:
+                cursor.execute('ALTER TABLE transactions ADD COLUMN currency TEXT DEFAULT "VND"')
+            
+            # Create currencies table
             cursor.execute('''
-                CREATE TABLE IF NOT EXISTS budgets (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    category TEXT NOT NULL,
-                    amount REAL NOT NULL,
-                    period TEXT NOT NULL,
-                    start_date TEXT NOT NULL,
-                    end_date TEXT,
-                    created_at TEXT NOT NULL
+                CREATE TABLE IF NOT EXISTS currencies (
+                    code TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    exchange_rate DECIMAL(10,6) NOT NULL,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
             
-            # Create alerts table
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS alerts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    type TEXT NOT NULL,
-                    message TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    read BOOLEAN DEFAULT 0
-                )
-            ''')
+            # Insert default currency if it doesn't exist
+            cursor.execute('SELECT code FROM currencies WHERE code = ?', (self.default_currency,))
+            if not cursor.fetchone():
+                cursor.execute('''
+                    INSERT INTO currencies (code, name, exchange_rate)
+                    VALUES (?, ?, ?)
+                ''', (self.default_currency, "Vietnamese Dong", 1.0))
             
             conn.commit()
     
-    def add_transaction(self, amount: float, description: str, category: Optional[str] = None,
-                       source: Optional[str] = None, date: Optional[str] = None,
-                       is_recurring: bool = False, recurring_frequency: Optional[str] = None,
-                       tags: Optional[List[str]] = None, notes: Optional[str] = None) -> int:
-        """Add a new transaction"""
-        with sqlite3.connect(self.db_path) as conn:
+    def add_transaction(self, amount: float, description: str, 
+                       category: Optional[str] = None, 
+                       source: Optional[str] = None,
+                       date: Optional[str] = None,
+                       currency: Optional[str] = None) -> int:
+        """Add a new transaction to the database"""
+        if date is None:
+            date = datetime.now().strftime('%Y-%m-%d')
+        
+        if currency is None:
+            currency = self.default_currency
+        
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
-            
-            # Calculate next date for recurring transactions
-            next_date = None
-            if is_recurring and recurring_frequency:
-                next_date = self._calculate_next_date(date or datetime.now().strftime('%Y-%m-%d'),
-                                                    recurring_frequency)
-            
             cursor.execute('''
-                INSERT INTO transactions (
-                    amount, description, category, source, date, created_at,
-                    is_recurring, recurring_frequency, next_date, tags, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                amount, description, category, source,
-                date or datetime.now().strftime('%Y-%m-%d'),
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                is_recurring, recurring_frequency, next_date,
-                json.dumps(tags) if tags else None,
-                notes
-            ))
-            
+                INSERT INTO transactions (amount, description, category, source, date, currency)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (amount, description, category, source, date, currency))
+            conn.commit()
             return cursor.lastrowid
-    
-    def _calculate_next_date(self, current_date: str, frequency: str) -> str:
-        """Calculate the next date for a recurring transaction"""
-        current = datetime.strptime(current_date, '%Y-%m-%d')
-        
-        if frequency == 'daily':
-            next_date = current.replace(day=current.day + 1)
-        elif frequency == 'weekly':
-            next_date = current.replace(day=current.day + 7)
-        elif frequency == 'monthly':
-            if current.month == 12:
-                next_date = current.replace(year=current.year + 1, month=1)
-            else:
-                next_date = current.replace(month=current.month + 1)
-        elif frequency == 'yearly':
-            next_date = current.replace(year=current.year + 1)
-        else:
-            raise ValueError(f"Invalid frequency: {frequency}")
-        
-        return next_date.strftime('%Y-%m-%d')
     
     def get_transaction(self, transaction_id: int) -> Optional[Tuple]:
         """Get a transaction by ID"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT * FROM transactions WHERE id = ?', (transaction_id,))
             row = cursor.fetchone()
@@ -125,7 +94,7 @@ class FinanceDB:
     
     def get_all_transactions(self) -> List[Tuple]:
         """Get all transactions"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT * FROM transactions ORDER BY date DESC')
             rows = cursor.fetchall()
@@ -141,7 +110,7 @@ class FinanceDB:
     
     def get_transactions_by_date_range(self, start_date: str, end_date: str) -> List[Tuple]:
         """Get transactions within a date range"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT * FROM transactions 
@@ -161,7 +130,7 @@ class FinanceDB:
     
     def search_transactions(self, query: str) -> List[Tuple]:
         """Search transactions by description, category, or source"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT * FROM transactions 
@@ -179,82 +148,125 @@ class FinanceDB:
             
             return rows
     
-    def update_transaction(self, transaction_id: int, amount: Optional[float] = None,
-                         description: Optional[str] = None, category: Optional[str] = None,
-                         source: Optional[str] = None, date: Optional[str] = None,
-                         is_recurring: Optional[bool] = None,
-                         recurring_frequency: Optional[str] = None,
-                         tags: Optional[List[str]] = None,
-                         notes: Optional[str] = None) -> bool:
-        """Update a transaction"""
-        with sqlite3.connect(self.db_path) as conn:
+    def update_transaction(self, transaction_id: int, amount: float, description: str, 
+                         category: Optional[str] = None, 
+                         source: Optional[str] = None,
+                         date: Optional[str] = None,
+                         currency: Optional[str] = None) -> bool:
+        """Update an existing transaction"""
+        if date is None:
+            date = datetime.now().strftime('%Y-%m-%d')
+        
+        # Get existing transaction to preserve currency if not provided
+        if currency is None:
+            existing = self.get_transaction(transaction_id)
+            if existing:
+                currency = existing[6]  # Currency is in index 6
+            else:
+                currency = self.default_currency
+        
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
-            
-            # Build update query dynamically
-            updates = []
-            values = []
-            
-            if amount is not None:
-                updates.append('amount = ?')
-                values.append(amount)
-            if description is not None:
-                updates.append('description = ?')
-                values.append(description)
-            if category is not None:
-                updates.append('category = ?')
-                values.append(category)
-            if source is not None:
-                updates.append('source = ?')
-                values.append(source)
-            if date is not None:
-                updates.append('date = ?')
-                values.append(date)
-            if is_recurring is not None:
-                updates.append('is_recurring = ?')
-                values.append(is_recurring)
-            if recurring_frequency is not None:
-                updates.append('recurring_frequency = ?')
-                values.append(recurring_frequency)
-            if tags is not None:
-                updates.append('tags = ?')
-                values.append(json.dumps(tags))
-            if notes is not None:
-                updates.append('notes = ?')
-                values.append(notes)
-            
-            if not updates:
-                return False
-            
-            # Add transaction_id to values
-            values.append(transaction_id)
-            
-            query = f'''
+            cursor.execute('''
                 UPDATE transactions 
-                SET {', '.join(updates)}
+                SET amount = ?, description = ?, category = ?, source = ?, date = ?, currency = ?
                 WHERE id = ?
-            '''
-            
-            cursor.execute(query, values)
+            ''', (amount, description, category, source, date, currency, transaction_id))
+            conn.commit()
             return cursor.rowcount > 0
     
     def delete_transaction(self, transaction_id: int) -> bool:
         """Delete a transaction"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             cursor.execute('DELETE FROM transactions WHERE id = ?', (transaction_id,))
             return cursor.rowcount > 0
     
-    def get_balance(self) -> float:
-        """Calculate current balance"""
-        with sqlite3.connect(self.db_path) as conn:
+    def get_balance(self, currency: Optional[str] = None) -> float:
+        """
+        Calculate current balance
+        
+        If currency is specified, convert all transactions to that currency
+        Otherwise, use the default currency
+        """
+        if currency is None:
+            currency = self.default_currency
+            
+        with sqlite3.connect(self.db_name) as conn:
+            conn.create_function("convert_currency", 2, self._convert_currency_func)
             cursor = conn.cursor()
-            cursor.execute('SELECT SUM(amount) FROM transactions')
+            cursor.execute('''
+                SELECT SUM(convert_currency(amount, currency)) 
+                FROM transactions
+            ''', (currency,))
             return cursor.fetchone()[0] or 0.0
+    
+    def _convert_currency_func(self, amount: float, from_currency: str, to_currency: str = None) -> float:
+        """Helper function for SQLite to convert between currencies"""
+        if to_currency is None:
+            to_currency = self.default_currency
+            
+        if from_currency == to_currency:
+            return amount
+            
+        # Get exchange rates
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT exchange_rate FROM currencies WHERE code = ?', (from_currency,))
+            from_rate = cursor.fetchone()
+            
+            cursor.execute('SELECT exchange_rate FROM currencies WHERE code = ?', (to_currency,))
+            to_rate = cursor.fetchone()
+            
+            if from_rate and to_rate:
+                # Convert amount to target currency
+                return amount * (to_rate[0] / from_rate[0])
+            else:
+                # If currency not found, return original amount
+                return amount
+                
+    def add_currency(self, code: str, name: str, exchange_rate: float) -> bool:
+        """
+        Add or update a currency
+        
+        Parameters:
+        code (str): The currency code (e.g., USD, EUR)
+        name (str): The currency name
+        exchange_rate (float): Exchange rate relative to the base currency
+        
+        Returns:
+        bool: True if successful
+        """
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO currencies (code, name, exchange_rate, last_updated)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (code, name, exchange_rate))
+            conn.commit()
+            return cursor.rowcount > 0
+    
+    def get_currencies(self) -> List[Dict]:
+        """Get all available currencies"""
+        with sqlite3.connect(self.db_name) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM currencies ORDER BY code')
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def get_currency(self, code: str) -> Optional[Dict]:
+        """Get a specific currency by code"""
+        with sqlite3.connect(self.db_name) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM currencies WHERE code = ?', (code,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
     
     def get_category_summary(self, start_date: Optional[str] = None,
                            end_date: Optional[str] = None) -> Dict[str, float]:
         """Get summary of transactions by category"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             
             query = 'SELECT category, SUM(amount) FROM transactions'
@@ -272,7 +284,7 @@ class FinanceDB:
     def get_source_summary(self, start_date: Optional[str] = None,
                           end_date: Optional[str] = None) -> Dict[str, float]:
         """Get summary of transactions by source"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             
             query = 'SELECT source, SUM(amount) FROM transactions'
@@ -289,7 +301,7 @@ class FinanceDB:
     
     def get_monthly_summary(self, year: int, month: int) -> Dict[str, float]:
         """Get monthly summary of transactions"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             
             # Get total
@@ -319,33 +331,33 @@ class FinanceDB:
                 'expenses': expenses
             }
     
-    def export_transactions(self, start_date: Optional[str] = None,
+    def export_transactions(self, start_date: Optional[str] = None, 
                           end_date: Optional[str] = None) -> List[Dict]:
         """Export transactions to a list of dictionaries"""
-        transactions = self.get_all_transactions()
         if start_date and end_date:
             transactions = self.get_transactions_by_date_range(start_date, end_date)
+        else:
+            transactions = self.get_all_transactions()
         
-        return [{
-            'id': t[0],
-            'amount': t[1],
-            'description': t[2],
-            'category': t[3],
-            'source': t[4],
-            'date': t[5],
-            'created_at': t[6],
-            'is_recurring': bool(t[7]),
-            'recurring_frequency': t[8],
-            'next_date': t[9],
-            'tags': t[10],
-            'notes': t[11]
-        } for t in transactions]
+        return [
+            {
+                'id': t[0],
+                'amount': t[1],
+                'description': t[2],
+                'category': t[3],
+                'source': t[4],
+                'date': t[5],
+                'currency': t[6],
+                'created_at': t[7]
+            }
+            for t in transactions
+        ]
     
     def add_budget(self, category: str, amount: float, period: str,
                   start_date: Optional[str] = None,
                   end_date: Optional[str] = None) -> int:
         """Add a new budget"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -363,7 +375,7 @@ class FinanceDB:
     
     def check_budget_alerts(self) -> List[Tuple]:
         """Check for budget alerts"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             
             # Get current month's transactions by category
@@ -399,7 +411,7 @@ class FinanceDB:
     
     def add_alert(self, alert_type: str, message: str) -> int:
         """Add a new alert"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -415,7 +427,7 @@ class FinanceDB:
     
     def get_unread_alerts(self) -> List[Tuple]:
         """Get all unread alerts"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT id, type, message, created_at
@@ -427,7 +439,7 @@ class FinanceDB:
     
     def mark_alert_read(self, alert_id: int) -> bool:
         """Mark an alert as read"""
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 UPDATE alerts

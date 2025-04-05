@@ -1,11 +1,12 @@
 import click
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict
 from ..core.database import FinanceDB
-from ..core.currency import parse_amount, format_amount
+from ..core.currency import parse_amount, format_amount, get_exchange_rates, get_common_currencies
 from .utils import print_transaction_table
 import json
 import pandas as pd
+import requests
 
 @click.group()
 def cli():
@@ -20,20 +21,20 @@ def cli():
 @click.option('--category', help='Transaction category')
 @click.option('--source', help='Transaction source')
 @click.option('--date', help='Transaction date (YYYY-MM-DD)')
-@click.option('--recurring', is_flag=True, help='Make this a recurring transaction')
-@click.option('--frequency', help='Recurring frequency (daily/weekly/monthly/yearly)')
-@click.option('--tags', help='Comma-separated list of tags')
-@click.option('--notes', help='Additional notes')
+@click.option('--currency', help='Currency code (USD, EUR, VND, etc.)')
 def add(amount: str, description: str, type: str, category: Optional[str],
-        source: Optional[str], date: Optional[str], recurring: bool,
-        frequency: Optional[str], tags: Optional[str], notes: Optional[str]):
+        source: Optional[str], date: Optional[str], currency: Optional[str]):
     """Add a new transaction"""
     db = FinanceDB()
     
-    # Parse amount with VND shortcuts
+    # Parse amount with currency shortcuts
     try:
-        parsed_amount = parse_amount(amount)
+        parsed_amount, detected_currency = parse_amount(amount, currency or db.default_currency)
         
+        # Use detected currency if not explicitly specified
+        if not currency:
+            currency = detected_currency
+            
         # Apply sign based on transaction type
         if type == 'expense' and parsed_amount > 0:
             parsed_amount = -parsed_amount
@@ -41,11 +42,8 @@ def add(amount: str, description: str, type: str, category: Optional[str],
             parsed_amount = abs(parsed_amount)
     except ValueError:
         click.echo("Error: Invalid amount format. Use numbers with k (thousands), m (millions), or b (billions)")
-        click.echo("Examples: 30k, 1.5m, 2.5k, 100")
+        click.echo("Examples: 30k, 1.5m, 2.5k, 100, $50, 100USD")
         return
-    
-    # Parse tags
-    tag_list = [tag.strip() for tag in tags.split(',')] if tags else None
     
     transaction_id = db.add_transaction(
         amount=parsed_amount,
@@ -53,13 +51,11 @@ def add(amount: str, description: str, type: str, category: Optional[str],
         category=category,
         source=source,
         date=date or datetime.now().strftime('%Y-%m-%d'),
-        is_recurring=recurring,
-        recurring_frequency=frequency if recurring else None,
-        tags=tag_list,
-        notes=notes
+        currency=currency
     )
     
     click.echo(f"Transaction added successfully with ID: {transaction_id}")
+    click.echo(f"Amount: {format_amount(parsed_amount, currency)}")
 
 @cli.command()
 @click.option('--start-date', help='Start date (YYYY-MM-DD)')
@@ -68,8 +64,10 @@ def add(amount: str, description: str, type: str, category: Optional[str],
 @click.option('--id', type=int, help='View specific transaction by ID')
 @click.option('--search', help='Search transactions by description, category, or source')
 @click.option('--full-amounts', is_flag=True, help='Display full amount values without abbreviations')
+@click.option('--currency', help='Display amounts in specified currency')
 def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str],
-         id: Optional[int], search: Optional[str], full_amounts: bool):
+         id: Optional[int], search: Optional[str], full_amounts: bool,
+         currency: Optional[str]):
     """View transactions"""
     db = FinanceDB()
     
@@ -78,24 +76,18 @@ def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str]
         if transaction:
             click.echo("\n=== Transaction Details ===")
             click.echo(f"ID: {transaction[0]}")
-            click.echo(f"Amount: {format_amount(transaction[1], full=full_amounts)}")
+            click.echo(f"Amount: {format_amount(transaction[1], transaction[6], full=full_amounts)}")
             click.echo(f"Description: {transaction[2]}")
             click.echo(f"Category: {transaction[3] or 'N/A'}")
             click.echo(f"Source: {transaction[4] or 'N/A'}")
             click.echo(f"Date: {transaction[5]}")
-            click.echo(f"Created at: {transaction[6]}")
-            if transaction[7]:  # is_recurring
-                click.echo(f"Recurring: Yes ({transaction[8]})")
-                click.echo(f"Next: {transaction[9]}")
-            if transaction[10]:  # tags
-                click.echo(f"Tags: {', '.join(transaction[10])}")
-            if transaction[11]:  # notes
-                click.echo(f"Notes: {transaction[11]}")
+            click.echo(f"Currency: {transaction[6]}")
+            click.echo(f"Created at: {transaction[7]}")
         else:
             click.echo("Transaction not found.")
     elif search:
         transactions = db.search_transactions(search)
-        print_transaction_table(transactions, full_amounts=full_amounts)
+        print_transaction_table(transactions, full_amounts=full_amounts, display_currency=currency)
     else:
         transactions = db.get_all_transactions()
         if date:
@@ -103,7 +95,7 @@ def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str]
             transactions = db.get_transactions_by_date_range(date, date)
         elif start_date and end_date:
             transactions = db.get_transactions_by_date_range(start_date, end_date)
-        print_transaction_table(transactions, full_amounts=full_amounts)
+        print_transaction_table(transactions, full_amounts=full_amounts, display_currency=currency)
 
 @cli.command()
 @click.argument('transaction_id', type=int)
@@ -112,41 +104,43 @@ def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str]
 @click.option('--category', help='New category')
 @click.option('--source', help='New source')
 @click.option('--date', help='New date (YYYY-MM-DD)')
-@click.option('--recurring', is_flag=True, help='Make this a recurring transaction')
-@click.option('--frequency', help='Recurring frequency (daily/weekly/monthly/yearly)')
-@click.option('--tags', help='Comma-separated list of tags')
-@click.option('--notes', help='Additional notes')
+@click.option('--currency', help='New currency code (USD, EUR, VND, etc.)')
 def update(transaction_id: int, amount: Optional[str], description: Optional[str],
           category: Optional[str], source: Optional[str], date: Optional[str],
-          recurring: bool, frequency: Optional[str], tags: Optional[str],
-          notes: Optional[str]):
+          currency: Optional[str]):
     """Update a transaction"""
     db = FinanceDB()
+    
+    # Get existing transaction to preserve currency if not provided
+    existing = db.get_transaction(transaction_id)
+    if not existing:
+        click.echo("Transaction not found.")
+        return
+    
+    existing_currency = existing[6]
     
     # Parse amount if provided
     parsed_amount = None
     if amount:
         try:
-            parsed_amount = parse_amount(amount)
+            parsed_amount, detected_currency = parse_amount(amount, currency or existing_currency)
+            
+            # Use detected currency if not explicitly specified
+            if not currency:
+                currency = detected_currency
         except ValueError:
             click.echo("Error: Invalid amount format. Use numbers with k (thousands), m (millions), or b (billions)")
-            click.echo("Examples: 30k, 1.5m, 2.5k, 100")
+            click.echo("Examples: 30k, 1.5m, 2.5k, 100, $50, 100USD")
             return
-    
-    # Parse tags
-    tag_list = [tag.strip() for tag in tags.split(',')] if tags else None
     
     if db.update_transaction(
         transaction_id=transaction_id,
-        amount=parsed_amount,
-        description=description,
+        amount=parsed_amount if parsed_amount is not None else existing[1],
+        description=description or existing[2],
         category=category,
         source=source,
         date=date,
-        is_recurring=recurring if recurring else None,
-        recurring_frequency=frequency if recurring else None,
-        tags=tag_list,
-        notes=notes
+        currency=currency
     ):
         click.echo("Transaction updated successfully")
     else:
@@ -164,11 +158,14 @@ def delete(transaction_id: int):
 
 @cli.command()
 @click.option('--full', is_flag=True, help='Display the full balance amount without abbreviations')
-def balance(full: bool):
+@click.option('--currency', help='Display balance in specified currency')
+def balance(full: bool, currency: Optional[str]):
     """View current balance"""
     db = FinanceDB()
-    balance_amount = db.get_balance()
-    click.echo(f"\nCurrent Balance: {format_amount(balance_amount, full=full)}")
+    balance_amount = db.get_balance(currency)
+    
+    display_currency = currency or db.default_currency
+    click.echo(f"\nCurrent Balance: {format_amount(balance_amount, display_currency, full=full)}")
 
 @cli.command()
 @click.option('--type', type=click.Choice(['category', 'source']), help='Summary type')
@@ -176,91 +173,111 @@ def balance(full: bool):
 @click.option('--year', type=int, help='Year (YYYY)')
 @click.option('--start-date', help='Start date (YYYY-MM-DD)')
 @click.option('--end-date', help='End date (YYYY-MM-DD)')
+@click.option('--currency', help='Display summary in specified currency')
 def summary(type: Optional[str], month: Optional[int], year: Optional[int],
-           start_date: Optional[str], end_date: Optional[str]):
+           start_date: Optional[str], end_date: Optional[str], currency: Optional[str]):
     """View transaction summaries"""
     db = FinanceDB()
+    display_currency = currency or db.default_currency
     
     if type == 'category':
         summary = db.get_category_summary(start_date, end_date)
         click.echo("\nCategory Summary:")
         for category, amount in summary.items():
-            click.echo(f"{category}: {format_amount(amount)}")
+            click.echo(f"{category}: {format_amount(amount, display_currency)}")
     elif type == 'source':
         summary = db.get_source_summary(start_date, end_date)
         click.echo("\nSource Summary:")
         for source, amount in summary.items():
-            click.echo(f"{source}: {format_amount(amount)}")
+            click.echo(f"{source}: {format_amount(amount, display_currency)}")
     elif month and year:
         summary = db.get_monthly_summary(year, month)
         click.echo(f"\nSummary for {year}-{month:02d}:")
-        click.echo(f"Total: {format_amount(summary['total'])}")
-        click.echo(f"Income: {format_amount(summary['income'])}")
-        click.echo(f"Expenses: {format_amount(summary['expenses'])}")
+        click.echo(f"Total: {format_amount(summary['total'], display_currency)}")
+        click.echo(f"Income: {format_amount(summary['income'], display_currency)}")
+        click.echo(f"Expenses: {format_amount(summary['expenses'], display_currency)}")
 
+# Add new currency commands
 @cli.command()
-@click.option('--start-date', help='Start date (YYYY-MM-DD)')
-@click.option('--end-date', help='End date (YYYY-MM-DD)')
-@click.option('--date', help='Export transactions for a specific date (YYYY-MM-DD)')
-@click.option('--format', type=click.Choice(['json', 'csv', 'excel', 'html']), default='json',
-              help='Export format (json, csv, excel, html)')
-@click.option('--full-amounts', is_flag=True, help='Display full amount values without abbreviations')
-def export(start_date: Optional[str], end_date: Optional[str], date: Optional[str],
-           format: str, full_amounts: bool):
-    """Export transactions to various formats"""
+def currencies():
+    """List all available currencies"""
     db = FinanceDB()
+    currencies = db.get_currencies()
     
-    # Get transactions with date filter
-    if date:
-        transactions = db.export_transactions(date, date)
-    else:
-        transactions = db.export_transactions(start_date, end_date)
-    
-    # Define the output filename based on format and date range
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename_base = f"transactions_export_{timestamp}"
-    
-    # Convert to pandas DataFrame for better formatting
-    df = pd.DataFrame(transactions)
-    
-    if not transactions:
-        click.echo("No transactions found to export.")
+    if not currencies:
+        click.echo("No currencies configured.")
         return
     
-    # Rename columns for better readability
-    df.columns = [
-        'ID', 'Amount', 'Description', 'Category', 'Source', 'Date', 
-        'Created At', 'Is Recurring', 'Frequency', 'Next Date', 'Tags', 'Notes'
-    ]
+    click.echo("\n=== Available Currencies ===")
+    click.echo(f"{'Code':<5} {'Name':<25} {'Exchange Rate':<15} {'Last Updated'}")
+    click.echo("-" * 60)
     
-    # Format the amount column
-    if full_amounts:
-        df['Amount'] = df['Amount'].apply(lambda x: format_amount(x, full=True))
+    for currency in currencies:
+        click.echo(f"{currency['code']:<5} {currency['name']:<25} {currency['exchange_rate']:<15.6f} {currency['last_updated']}")
+
+@cli.command()
+@click.argument('code')
+@click.argument('name')
+@click.argument('exchange_rate', type=float)
+def add_currency(code: str, name: str, exchange_rate: float):
+    """Add or update a currency"""
+    db = FinanceDB()
+    
+    if db.add_currency(code, name, exchange_rate):
+        click.echo(f"Currency {code} added/updated successfully")
     else:
-        df['Amount'] = df['Amount'].apply(format_amount)
+        click.echo("Failed to add currency")
+
+@cli.command()
+def update_rates():
+    """Update currency exchange rates from online source"""
+    db = FinanceDB()
     
-    # Handle tags column (convert list to string)
-    df['Tags'] = df['Tags'].apply(lambda x: ', '.join(x) if x else 'N/A')
+    click.echo("Fetching latest exchange rates...")
+    try:
+        rates = get_exchange_rates("USD")
+        
+        if not rates:
+            click.echo("Failed to fetch exchange rates.")
+            return
+        
+        # Update each currency in the database
+        updated = 0
+        for code, rate in rates.items():
+            # Get existing currency data if available
+            currency_data = db.get_currency(code)
+            name = currency_data["name"] if currency_data else code
+            
+            if db.add_currency(code, name, rate):
+                updated += 1
+        
+        click.echo(f"Updated exchange rates for {updated} currencies.")
+    except Exception as e:
+        click.echo(f"Error updating rates: {e}")
+
+@cli.command()
+def import_currencies():
+    """Import common currencies"""
+    db = FinanceDB()
     
-    # Export based on selected format
-    if format == 'json':
-        filename = f"{filename_base}.json"
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(transactions, f, indent=2, ensure_ascii=False)
+    common_currencies = get_common_currencies()
+    rates = get_exchange_rates("USD")
     
-    elif format == 'csv':
-        filename = f"{filename_base}.csv"
-        df.to_csv(filename, index=False, encoding='utf-8')
+    if not rates:
+        click.echo("Failed to fetch exchange rates. Using default values.")
     
-    elif format == 'excel':
-        filename = f"{filename_base}.xlsx"
-        df.to_excel(filename, index=False, sheet_name='Transactions')
+    imported = 0
+    for currency in common_currencies:
+        code = currency["code"]
+        name = currency["name"]
+        
+        # Use exchange rate from API if available, otherwise use 1.0
+        rate = rates.get(code, 1.0)
+        
+        if db.add_currency(code, name, rate):
+            imported += 1
     
-    elif format == 'html':
-        filename = f"{filename_base}.html"
-        df.to_html(filename, index=False, border=1, classes='table table-striped')
-    
-    click.echo(f"Transactions exported to {filename}")
+    click.echo(f"Imported {imported} common currencies.")
 
 @cli.command()
 @click.argument('category')

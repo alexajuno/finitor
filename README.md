@@ -15,7 +15,7 @@ A powerful command-line personal finance manager that helps you track your incom
 - 🔍 Search transactions
 - 📱 Mobile-friendly CLI interface
 - 🔄 Recurring transactions
-- 💳 Multiple currency support (coming soon)
+- 💱 Multiple currency support
 
 ## Installation
 
@@ -36,7 +36,15 @@ pip install -r requirements.txt
 
 Add a transaction:
 ```bash
+# Basic transaction (default currency is VND)
 python -m finitor add 1000 "Lunch" --category "Food" --source "Restaurant" --date "2024-03-30"
+
+# Transaction with specified currency
+python -m finitor add 20USD "Lunch" --category "Food" --source "Restaurant"
+
+# Alternative currency formats
+python -m finitor add $20 "Coffee" --category "Food"
+python -m finitor add 20 "Book" --currency EUR
 ```
 
 View transactions:
@@ -55,6 +63,9 @@ python -m finitor view --date "2024-03-15"
 
 # View transactions with full amount values
 python -m finitor view --full-amounts
+
+# View transactions in a different currency
+python -m finitor view --currency USD
 ```
 
 View summaries:
@@ -67,6 +78,9 @@ python -m finitor summary --type source
 
 # Monthly summary
 python -m finitor summary --month 3 --year 2024
+
+# Summary in different currency
+python -m finitor summary --type category --currency USD
 ```
 
 View balance:
@@ -76,6 +90,24 @@ python -m finitor balance
 
 # View full balance without abbreviations
 python -m finitor balance --full
+
+# View balance in a different currency
+python -m finitor balance --currency USD
+```
+
+Currency management:
+```bash
+# List available currencies
+python -m finitor currencies
+
+# Add or update a currency
+python -m finitor add-currency USD "US Dollar" 0.000043
+
+# Update exchange rates from online source
+python -m finitor update-rates
+
+# Import common currencies
+python -m finitor import-currencies
 ```
 
 Export transactions:
@@ -129,14 +161,32 @@ finitor/
     ├── core/
     │   ├── __init__.py
     │   ├── database.py
-    │   ├── models.py
-    │   └── services.py
+    │   ├── currency.py
+    │   └── models.py
     └── utils/
         ├── __init__.py
         ├── date.py
-        ├── currency.py
-        └── validators.py
+        ├── validators.py
 ```
+
+## Currency Support
+
+Finitor supports multiple currencies for transactions. You can:
+
+- Add transactions in different currencies (VND, USD, EUR, etc.)
+- View your balance and reports in any supported currency
+- Automatically convert between currencies using current exchange rates
+- Update exchange rates from an online source
+- Add and manage custom currencies
+
+### Currency Format Examples
+
+- `30k` - 30,000 VND (default currency)
+- `1.5m` - 1,500,000 VND
+- `100USD` - 100 US Dollars
+- `50EUR` - 50 Euros
+- `$100` - 100 US Dollars
+- `€50` - 50 Euros
 
 ## Contributing
 
