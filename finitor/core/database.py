@@ -25,7 +25,8 @@ class FinanceDB:
                     source TEXT,
                     date DATE NOT NULL,
                     currency TEXT DEFAULT 'VND',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+                    tags TEXT
                 )
             ''')
             
@@ -71,8 +72,8 @@ class FinanceDB:
         with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT INTO transactions (amount, description, category, source, date, currency)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO transactions (amount, description, category, source, date, currency, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
             ''', (amount, description, category, source, date, currency))
             conn.commit()
             return cursor.lastrowid
@@ -102,8 +103,13 @@ class FinanceDB:
             # Convert tags from JSON string to list for each row
             for i, row in enumerate(rows):
                 row = list(row)
-                if row[10]:  # tags column
-                    row[10] = json.loads(row[10])
+                if len(row) > 10 and row[10]:  # Check if tags column exists and has value
+                    try:
+                        row[10] = json.loads(row[10])
+                    except (json.JSONDecodeError, IndexError):
+                        row[10] = []
+                else:
+                    row.append([])  # Add empty tags list if column doesn't exist
                 rows[i] = tuple(row)
             
             return rows
@@ -193,13 +199,14 @@ class FinanceDB:
             currency = self.default_currency
             
         with sqlite3.connect(self.db_name) as conn:
-            conn.create_function("convert_currency", 2, self._convert_currency_func)
+            conn.create_function("convert_currency", 3, self._convert_currency_func)
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT SUM(convert_currency(amount, currency)) 
+                SELECT SUM(convert_currency(amount, currency, ?)) 
                 FROM transactions
             ''', (currency,))
-            return cursor.fetchone()[0] or 0.0
+            result = cursor.fetchone()[0]
+            return result if result is not None else 0.0
     
     def _convert_currency_func(self, amount: float, from_currency: str, to_currency: str = None) -> float:
         """Helper function for SQLite to convert between currencies"""
