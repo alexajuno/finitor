@@ -1,15 +1,16 @@
-from typing import List, Tuple, Optional
+from typing import List, Optional
 from tabulate import tabulate
 from ..core.currency import format_amount, convert_currency
 from ..core.database import FinanceDB
+from ..core.models import Transaction
 
-def print_transaction_table(transactions: List[Tuple], full_amounts: bool = False, 
+def print_transaction_table(transactions: List[Transaction], full_amounts: bool = False, 
                            display_currency: Optional[str] = None):
     """
     Print transactions in a formatted table
     
     Parameters:
-    transactions (List[Tuple]): The list of transactions to display
+    transactions (List[Transaction]): The list of transactions to display
     full_amounts (bool): If True, display the full amount without abbreviations
     display_currency (Optional[str]): If provided, convert all amounts to this currency
     """
@@ -25,8 +26,9 @@ def print_transaction_table(transactions: List[Tuple], full_amounts: bool = Fals
     # Prepare table data
     table_data = []
     for t in transactions:
-        amount = t[1]
-        currency = t[6]  # Currency is stored at index 6
+        # Access transaction attributes directly
+        amount = t.amount
+        currency = t.currency
         
         # Convert amount if display_currency is specified
         if display_currency and display_currency != currency:
@@ -36,13 +38,13 @@ def print_transaction_table(transactions: List[Tuple], full_amounts: bool = Fals
             display_amt = format_amount(amount, currency, full=full_amounts)
         
         table_data.append([
-            t[0],  # ID
+            t.id,  # ID
             display_amt,  # Amount
-            t[2],  # Description
-            t[3] or 'N/A',  # Category
-            t[4] or 'N/A',  # Source
-            t[5],  # Date
-            t[6]  # Currency
+            t.description,  # Description
+            t.category or 'N/A',  # Category
+            t.source or 'N/A',  # Source
+            t.date,  # Date
+            t.currency  # Currency
         ])
     
     # Define headers

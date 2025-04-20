@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import List, Tuple, Optional, Dict, defaultdict
 import json
 from pathlib import Path
+from .models import Transaction
 
 class FinanceDB:
     def __init__(self, db_name: str = "finance.db"):
@@ -78,81 +79,101 @@ class FinanceDB:
             conn.commit()
             return cursor.lastrowid
     
-    def get_transaction(self, transaction_id: int) -> Optional[Tuple]:
+    def get_transaction(self, transaction_id: int) -> Optional[Transaction]:
         """Get a transaction by ID"""
         with sqlite3.connect(self.db_name) as conn:
+            # Use named access for columns to avoid index mismatches
+            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute('SELECT * FROM transactions WHERE id = ?', (transaction_id,))
+            cursor.execute(
+                'SELECT id, amount, description, category, source, date, currency, created_at, tags '
+                'FROM transactions WHERE id = ?', (transaction_id,)
+            )
             row = cursor.fetchone()
-            
             if row:
-                # Convert tags from JSON string to list
-                row = list(row)
-                if row[10]:  # tags column
-                    row[10] = json.loads(row[10])
-                return tuple(row)
+                tags_str = row['tags']
+                tags = json.loads(tags_str) if tags_str else []
+                # Validate currency code; fall back to default if unrecognized
+                raw_currency = row['currency']
+                if raw_currency and self.get_currency(raw_currency):
+                    currency_code = raw_currency
+                else:
+                    currency_code = self.default_currency
+                return Transaction(
+                    id=row['id'], amount=row['amount'], description=row['description'],
+                    category=row['category'], source=row['source'], date=row['date'],
+                    currency=currency_code, created_at=row['created_at'], tags=tags
+                )
             return None
     
-    def get_all_transactions(self) -> List[Tuple]:
+    def get_all_transactions(self) -> List[Transaction]:
         """Get all transactions"""
         with sqlite3.connect(self.db_name) as conn:
+            # Use named access to avoid index mismatches
+            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute('SELECT * FROM transactions ORDER BY date DESC')
+            cursor.execute(
+                'SELECT id, amount, description, category, source, date, currency, created_at, tags '
+                'FROM transactions ORDER BY date DESC'
+            )
             rows = cursor.fetchall()
-            
-            # Convert tags from JSON string to list for each row
-            for i, row in enumerate(rows):
-                row = list(row)
-                if len(row) > 10 and row[10]:  # Check if tags column exists and has value
-                    try:
-                        row[10] = json.loads(row[10])
-                    except (json.JSONDecodeError, IndexError):
-                        row[10] = []
-                else:
-                    row.append([])  # Add empty tags list if column doesn't exist
-                rows[i] = tuple(row)
-            
-            return rows
+            transactions: List[Transaction] = []
+            for row in rows:
+                tags_str = row['tags']
+                tags = json.loads(tags_str) if tags_str else []
+                transactions.append(Transaction(
+                    id=row['id'], amount=row['amount'], description=row['description'],
+                    date=row['date'], currency=row['currency'], created_at=row['created_at'],
+                    category=row['category'], source=row['source'], tags=tags
+                ))
+            return transactions
     
-    def get_transactions_by_date_range(self, start_date: str, end_date: str) -> List[Tuple]:
+    def get_transactions_by_date_range(self, start_date: str, end_date: str) -> List[Transaction]:
         """Get transactions within a date range"""
         with sqlite3.connect(self.db_name) as conn:
+            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT * FROM transactions 
-                WHERE date BETWEEN ? AND ?
-                ORDER BY date DESC
-            ''', (start_date, end_date))
+            cursor.execute(
+                '''SELECT id, amount, description, category, source, date, currency, created_at, tags
+                   FROM transactions
+                   WHERE date BETWEEN ? AND ?
+                   ORDER BY date DESC''', (start_date, end_date)
+            )
             rows = cursor.fetchall()
-            
-            # Convert tags from JSON string to list for each row
-            for i, row in enumerate(rows):
-                row = list(row)
-                if row[10]:  # tags column
-                    row[10] = json.loads(row[10])
-                rows[i] = tuple(row)
-            
-            return rows
+            transactions: List[Transaction] = []
+            for row in rows:
+                tags_str = row['tags']
+                tags = json.loads(tags_str) if tags_str else []
+                transactions.append(Transaction(
+                    id=row['id'], amount=row['amount'], description=row['description'],
+                    date=row['date'], currency=row['currency'], created_at=row['created_at'],
+                    category=row['category'], source=row['source'], tags=tags
+                ))
+            return transactions
     
-    def search_transactions(self, query: str) -> List[Tuple]:
+    def search_transactions(self, query: str) -> List[Transaction]:
         """Search transactions by description, category, or source"""
         with sqlite3.connect(self.db_name) as conn:
+            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT * FROM transactions 
-                WHERE description LIKE ? OR category LIKE ? OR source LIKE ?
-                ORDER BY date DESC
-            ''', (f'%{query}%', f'%{query}%', f'%{query}%'))
+            cursor.execute(
+                '''SELECT id, amount, description, category, source, date, currency, created_at, tags
+                   FROM transactions
+                   WHERE description LIKE ? OR category LIKE ? OR source LIKE ?
+                   ORDER BY date DESC''',
+                (f'%{query}%', f'%{query}%', f'%{query}%')
+            )
             rows = cursor.fetchall()
-            
-            # Convert tags from JSON string to list for each row
-            for i, row in enumerate(rows):
-                row = list(row)
-                if row[10]:  # tags column
-                    row[10] = json.loads(row[10])
-                rows[i] = tuple(row)
-            
-            return rows
+            transactions: List[Transaction] = []
+            for row in rows:
+                tags_str = row['tags']
+                tags = json.loads(tags_str) if tags_str else []
+                transactions.append(Transaction(
+                    id=row['id'], amount=row['amount'], description=row['description'],
+                    date=row['date'], currency=row['currency'], created_at=row['created_at'],
+                    category=row['category'], source=row['source'], tags=tags
+                ))
+            return transactions
     
     def update_transaction(self, transaction_id: int, amount: float, description: str, 
                          category: Optional[str] = None, 
@@ -162,12 +183,11 @@ class FinanceDB:
         """Update an existing transaction"""
         if date is None:
             date = datetime.now().strftime('%Y-%m-%d')
-        
         # Get existing transaction to preserve currency if not provided
         if currency is None:
             existing = self.get_transaction(transaction_id)
             if existing:
-                currency = existing[6]  # Currency is in index 6
+                currency = existing.currency
             else:
                 currency = self.default_currency
         
@@ -348,14 +368,14 @@ class FinanceDB:
         
         return [
             {
-                'id': t[0],
-                'amount': t[1],
-                'description': t[2],
-                'category': t[3],
-                'source': t[4],
-                'date': t[5],
-                'currency': t[6],
-                'created_at': t[7]
+                'id': t.id,
+                'amount': t.amount,
+                'description': t.description,
+                'category': t.category,
+                'source': t.source,
+                'date': t.date,
+                'currency': t.currency,
+                'created_at': t.created_at
             }
             for t in transactions
         ]

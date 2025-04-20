@@ -7,6 +7,7 @@ from .utils import print_transaction_table
 import json
 import pandas as pd
 import requests
+from ..core.models import Transaction
 
 # Load configuration for default settings
 import os
@@ -88,14 +89,14 @@ def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str]
         transaction = db.get_transaction(id)
         if transaction:
             click.echo("\n=== Transaction Details ===")
-            click.echo(f"ID: {transaction[0]}")
-            click.echo(f"Amount: {format_amount(transaction[1], transaction[6], full=full_amounts)}")
-            click.echo(f"Description: {transaction[2]}")
-            click.echo(f"Category: {transaction[3] or 'N/A'}")
-            click.echo(f"Source: {transaction[4] or 'N/A'}")
-            click.echo(f"Date: {transaction[5]}")
-            click.echo(f"Currency: {transaction[6]}")
-            click.echo(f"Created at: {transaction[7]}")
+            click.echo(f"ID: {transaction.id}")
+            click.echo(f"Amount: {format_amount(transaction.amount, transaction.currency, full=full_amounts)}")
+            click.echo(f"Description: {transaction.description}")
+            click.echo(f"Category: {transaction.category or 'N/A'}")
+            click.echo(f"Source: {transaction.source or 'N/A'}")
+            click.echo(f"Date: {transaction.date}")
+            click.echo(f"Currency: {transaction.currency}")
+            click.echo(f"Created at: {transaction.created_at}")
         else:
             click.echo("Transaction not found.")
     elif search:
@@ -140,7 +141,8 @@ def update(transaction_id: int, amount: Optional[str], description: Optional[str
         click.echo("Transaction not found.")
         return
     
-    existing_currency = existing[6]
+    # Use Transaction dataclass attributes
+    existing_currency = existing.currency
     
     # Parse amount if provided
     parsed_amount = None
@@ -158,12 +160,12 @@ def update(transaction_id: int, amount: Optional[str], description: Optional[str
     
     if db.update_transaction(
         transaction_id=transaction_id,
-        amount=parsed_amount if parsed_amount is not None else existing[1],
-        description=description or existing[2],
-        category=category,
-        source=source,
-        date=date,
-        currency=currency
+        amount=parsed_amount if parsed_amount is not None else existing.amount,
+        description=description or existing.description,
+        category=category or existing.category,
+        source=source or existing.source,
+        date=date or existing.date,
+        currency=currency or existing_currency
     ):
         click.echo("Transaction updated successfully")
     else:
