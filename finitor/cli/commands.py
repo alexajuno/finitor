@@ -65,9 +65,11 @@ def add(amount: str, description: str, type: str, category: Optional[str],
 @click.option('--search', help='Search transactions by description, category, or source')
 @click.option('--full-amounts', is_flag=True, help='Display full amount values without abbreviations')
 @click.option('--currency', help='Display amounts in specified currency')
+@click.option('-a', '--asc', 'order', flag_value='asc', default='asc', help='Sort transactions in ascending order (earliest first)')
+@click.option('-d', '--desc', 'order', flag_value='desc', help='Sort transactions in descending order (latest first)')
 def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str],
          id: Optional[int], search: Optional[str], full_amounts: bool,
-         currency: Optional[str]):
+         currency: Optional[str], order: str):
     """View transactions"""
     db = FinanceDB()
     
@@ -87,6 +89,8 @@ def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str]
             click.echo("Transaction not found.")
     elif search:
         transactions = db.search_transactions(search)
+        if order == 'asc':
+            transactions.reverse()
         print_transaction_table(transactions, full_amounts=full_amounts, display_currency=currency)
     else:
         transactions = db.get_all_transactions()
@@ -95,6 +99,8 @@ def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str]
             transactions = db.get_transactions_by_date_range(date, date)
         elif start_date and end_date:
             transactions = db.get_transactions_by_date_range(start_date, end_date)
+        if order == 'asc':
+            transactions.reverse()
         print_transaction_table(transactions, full_amounts=full_amounts, display_currency=currency)
 
 @cli.command()
