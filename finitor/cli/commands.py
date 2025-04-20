@@ -8,6 +8,15 @@ import json
 import pandas as pd
 import requests
 
+# Load configuration for default settings
+import os
+CONFIG_PATH = os.path.expanduser('~/.finitor_config.json')
+try:
+    with open(CONFIG_PATH, 'r') as f:
+        config = json.load(f)
+except FileNotFoundError:
+    config = {}
+
 @click.group()
 def cli():
     """Personal Finance Manager CLI"""
@@ -67,9 +76,11 @@ def add(amount: str, description: str, type: str, category: Optional[str],
 @click.option('--currency', help='Display amounts in specified currency')
 @click.option('-a', '--asc', 'order', flag_value='asc', default='asc', help='Sort transactions in ascending order (earliest first)')
 @click.option('-d', '--desc', 'order', flag_value='desc', help='Sort transactions in descending order (latest first)')
+@click.option('-n', '--limit', type=int, default=config.get('view_limit', 15), help='Limit number of transactions displayed')
+@click.option('--all', 'show_all', is_flag=True, help='Show all transactions without limit')
 def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str],
          id: Optional[int], search: Optional[str], full_amounts: bool,
-         currency: Optional[str], order: str):
+         currency: Optional[str], order: str, limit: int, show_all: bool):
     """View transactions"""
     db = FinanceDB()
     
@@ -91,6 +102,9 @@ def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str]
         transactions = db.search_transactions(search)
         if order == 'asc':
             transactions.reverse()
+        # Apply limit unless full listing requested
+        if not show_all:
+            transactions = transactions[-limit:]
         print_transaction_table(transactions, full_amounts=full_amounts, display_currency=currency)
     else:
         transactions = db.get_all_transactions()
@@ -101,6 +115,9 @@ def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str]
             transactions = db.get_transactions_by_date_range(start_date, end_date)
         if order == 'asc':
             transactions.reverse()
+        # Apply limit unless full listing requested
+        if not show_all:
+            transactions = transactions[-limit:]
         print_transaction_table(transactions, full_amounts=full_amounts, display_currency=currency)
 
 @cli.command()
@@ -327,4 +344,16 @@ def alerts():
         click.echo("No unread alerts.")
 
 if __name__ == '__main__':
-    cli() 
+    cli()
+    
+@cli.command()
+@click.option('--view-limit', type=int, help='Set default view limit')
+def setting(view_limit: Optional[int]):
+    """Configure finitor settings"""
+    if view_limit is not None:
+        config['view_limit'] = view_limit
+        with open(CONFIG_PATH, 'w') as f:
+            json.dump(config, f)
+        click.echo(f"Default view limit set to {view_limit}")
+    else:
+        click.echo(f"Current view limit: {config.get('view_limit', 15)}")
