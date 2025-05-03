@@ -249,7 +249,24 @@ def export(start_date: Optional[str], end_date: Optional[str], date: Optional[st
     if date:
         start_date = end_date = date
 
+    # Validate date range
+    if start_date and end_date:
+        try:
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            if start_dt > end_dt:
+                click.echo("Error: --start-date must be earlier than or equal to --end-date.")
+                return
+        except ValueError:
+            click.echo("Error: Invalid date format. Use YYYY-MM-DD.")
+            return
+
     transactions = db.export_transactions(start_date, end_date)
+
+    # Handle no transactions
+    if not transactions:
+        click.echo("No transactions found for the given criteria.")
+        return
 
     df = pd.DataFrame(transactions)
     display_currency = currency or db.default_currency
