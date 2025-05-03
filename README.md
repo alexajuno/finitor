@@ -66,6 +66,12 @@ python -m finitor view --full-amounts
 
 # View transactions in a different currency
 python -m finitor view --currency USD
+
+# View only income transactions
+python -m finitor view --type income
+
+# View only expense transactions
+python -m finitor view --type expense
 ```
 
 View summaries:

@@ -68,6 +68,7 @@ def add(amount: str, description: str, type: str, category: Optional[str],
     click.echo(f"Amount: {format_amount(parsed_amount, currency)}")
 
 @cli.command()
+@click.option('--type', 'txn_type', type=click.Choice(['income', 'expense']), help='Filter transactions by type (income or expense)')
 @click.option('--start-date', help='Start date (YYYY-MM-DD)')
 @click.option('--end-date', help='End date (YYYY-MM-DD)')
 @click.option('--date', help='View transactions for a specific date (YYYY-MM-DD)')
@@ -81,7 +82,7 @@ def add(amount: str, description: str, type: str, category: Optional[str],
 @click.option('--all', 'show_all', is_flag=True, help='Show all transactions without limit')
 def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str],
          id: Optional[int], search: Optional[str], full_amounts: bool,
-         currency: Optional[str], order: str, limit: int, show_all: bool):
+         currency: Optional[str], order: str, limit: int, show_all: bool, txn_type: Optional[str]):
     """View transactions"""
     db = FinanceDB()
     
@@ -101,6 +102,12 @@ def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str]
             click.echo("Transaction not found.")
     elif search:
         transactions = db.search_transactions(search)
+        # Filter transactions by type if specified
+        if txn_type:
+            if txn_type == 'income':
+                transactions = [t for t in transactions if t.amount > 0]
+            else:
+                transactions = [t for t in transactions if t.amount < 0]
         if order == 'asc':
             transactions.reverse()
         # Apply limit unless full listing requested
@@ -116,6 +123,12 @@ def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str]
             transactions = db.get_transactions_by_date_range(start_date, end_date)
         if order == 'asc':
             transactions.reverse()
+        # Filter transactions by type if specified
+        if txn_type:
+            if txn_type == 'income':
+                transactions = [t for t in transactions if t.amount > 0]
+            else:
+                transactions = [t for t in transactions if t.amount < 0]
         # Apply limit unless full listing requested
         if not show_all:
             transactions = transactions[-limit:]
@@ -221,6 +234,45 @@ def summary(type: Optional[str], month: Optional[int], year: Optional[int],
         click.echo(f"Total: {format_amount(summary['total'], display_currency)}")
         click.echo(f"Income: {format_amount(summary['income'], display_currency)}")
         click.echo(f"Expenses: {format_amount(summary['expenses'], display_currency)}")
+
+@cli.command()
+@click.option('--start-date', help='Start date (YYYY-MM-DD)')
+@click.option('--end-date', help='End date (YYYY-MM-DD)')
+@click.option('--date', help='Export transactions for a specific date (YYYY-MM-DD)')
+@click.option('--format', 'export_format', type=click.Choice(['json', 'csv', 'excel', 'html']), default='json', help='Export format')
+@click.option('--full-amounts', is_flag=True, help='Export with full amount values without abbreviations')
+@click.option('--currency', help='Display amounts in specified currency')
+def export(start_date: Optional[str], end_date: Optional[str], date: Optional[str], export_format: str, full_amounts: bool, currency: Optional[str]):
+    """Export transactions to a file in specified format"""
+    db = FinanceDB()
+    # Determine date range
+    if date:
+        start_date = end_date = date
+
+    transactions = db.export_transactions(start_date, end_date)
+
+    df = pd.DataFrame(transactions)
+    display_currency = currency or db.default_currency
+
+    # Format amounts
+    df['amount'] = df['amount'].apply(lambda x: format_amount(x, display_currency, full=full_amounts))
+
+    # Determine filename and extension
+    ext = 'json' if export_format == 'json' else 'csv' if export_format == 'csv' else 'xlsx' if export_format == 'excel' else 'html'
+    filename = f"transactions_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+
+    if export_format == 'json':
+        records = df.to_dict(orient='records')
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(records, f, indent=2, ensure_ascii=False)
+    elif export_format == 'csv':
+        df.to_csv(filename, index=False)
+    elif export_format == 'excel':
+        df.to_excel(filename, index=False)
+    elif export_format == 'html':
+        df.to_html(filename, index=False)
+
+    click.echo(f"\nTransactions exported to {filename}")
 
 # Add new currency commands
 @cli.command()
