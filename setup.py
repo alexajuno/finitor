@@ -28,6 +28,7 @@ setup(
     install_requires=[
         "click>=8.0.0",
         "tabulate>=0.9.0",
+        "openpyxl>=3.0.0",
     ],
     entry_points={
         "console_scripts": [

@@ -285,7 +285,11 @@ def export(start_date: Optional[str], end_date: Optional[str], date: Optional[st
     elif export_format == 'csv':
         df.to_csv(filename, index=False)
     elif export_format == 'excel':
-        df.to_excel(filename, index=False)
+        try:
+            df.to_excel(filename, index=False)
+        except ModuleNotFoundError:
+            click.echo("Error: openpyxl is required for Excel export. Please install it using 'pip install openpyxl'.")
+            return
     elif export_format == 'html':
         df.to_html(filename, index=False)
 
