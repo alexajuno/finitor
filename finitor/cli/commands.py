@@ -166,6 +166,12 @@ def update(transaction_id: int, amount: Optional[str], description: Optional[str
             # Use detected currency if not explicitly specified
             if not currency:
                 currency = detected_currency
+
+            # Retain sign based on existing transaction type
+            if existing.amount < 0 and parsed_amount > 0:
+                parsed_amount = -parsed_amount
+            elif existing.amount > 0 and parsed_amount < 0:
+                parsed_amount = abs(parsed_amount)
         except ValueError:
             click.echo("Error: Invalid amount format. Use numbers with k (thousands), m (millions), or b (billions)")
             click.echo("Examples: 30k, 1.5m, 2.5k, 100, $50, 100USD")
