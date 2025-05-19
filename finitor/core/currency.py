@@ -65,17 +65,20 @@ def format_amount(amount: float, currency: str = "VND", full: bool = False) -> s
     """
     # Format based on currency
     if currency == "VND":
+        # Use absolute value for threshold checks but preserve sign
+        sign = "-" if amount < 0 else ""
+        abs_amount = abs(amount)
         if full:
-            return f"{amount:,.0f} {currency}"
-        
-        if amount >= 1000000000:
-            return f"{amount/1000000000:.1f}b {currency}"
-        elif amount >= 1000000:
-            return f"{amount/1000000:.1f}m {currency}"
-        elif amount >= 1000:
-            return f"{amount/1000:.1f}k {currency}"
+            formatted = f"{abs_amount:,.0f} {currency}"
+        elif abs_amount >= 1_000_000_000:
+            formatted = f"{abs_amount/1_000_000_000:.1f}b {currency}"
+        elif abs_amount >= 1_000_000:
+            formatted = f"{abs_amount/1_000_000:.1f}m {currency}"
+        elif abs_amount >= 1_000:
+            formatted = f"{abs_amount/1_000:.1f}k {currency}"
         else:
-            return f"{amount:,.0f} {currency}"
+            formatted = f"{abs_amount:,.0f} {currency}"
+        return f"{sign}{formatted}"
     elif currency in ["USD", "EUR", "GBP"]:
         # Use standard dollar, euro, pound formatting
         symbols = {"USD": "$", "EUR": "€", "GBP": "£"}
