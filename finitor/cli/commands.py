@@ -137,12 +137,13 @@ def view(start_date: Optional[str], end_date: Optional[str], date: Optional[str]
 @cli.command()
 @click.argument('transaction_id', type=int)
 @click.option('--amount', help='New amount (can use k, m, b suffixes)')
+@click.option('--type', type=click.Choice(['income', 'expense']), help='New transaction type (income or expense)')
 @click.option('--description', help='New description')
 @click.option('--category', help='New category')
 @click.option('--source', help='New source')
 @click.option('--date', help='New date (YYYY-MM-DD)')
 @click.option('--currency', help='New currency code (USD, EUR, VND, etc.)')
-def update(transaction_id: int, amount: Optional[str], description: Optional[str],
+def update(transaction_id: int, amount: Optional[str], type: Optional[str], description: Optional[str],
           category: Optional[str], source: Optional[str], date: Optional[str],
           currency: Optional[str]):
     """Update a transaction"""
@@ -180,6 +181,7 @@ def update(transaction_id: int, amount: Optional[str], description: Optional[str
     if db.update_transaction(
         transaction_id=transaction_id,
         amount=parsed_amount if parsed_amount is not None else existing.amount,
+        type=type or existing.type,
         description=description or existing.description,
         category=category or existing.category,
         source=source or existing.source,

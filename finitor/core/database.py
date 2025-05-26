@@ -175,7 +175,7 @@ class FinanceDB:
                 ))
             return transactions
     
-    def update_transaction(self, transaction_id: int, amount: float, description: str, 
+    def update_transaction(self, transaction_id: int, amount: float, type: str, description: str, 
                          category: Optional[str] = None, 
                          source: Optional[str] = None,
                          date: Optional[str] = None,
