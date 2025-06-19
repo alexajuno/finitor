@@ -160,6 +160,8 @@ def update(transaction_id: int, amount: Optional[str], type: Optional[str], desc
     
     # Parse amount if provided
     parsed_amount = None
+    final_amount = existing.amount
+    
     if amount:
         try:
             parsed_amount, detected_currency = parse_amount(amount, currency or existing_currency)
@@ -168,20 +170,33 @@ def update(transaction_id: int, amount: Optional[str], type: Optional[str], desc
             if not currency:
                 currency = detected_currency
 
-            # Retain sign based on existing transaction type
-            if existing.amount < 0 and parsed_amount > 0:
-                parsed_amount = -parsed_amount
-            elif existing.amount > 0 and parsed_amount < 0:
-                parsed_amount = abs(parsed_amount)
+            # Handle type logic based on amount and existing transaction
+            if type:
+                # If type is explicitly provided, apply it
+                if type == 'expense' and parsed_amount > 0:
+                    parsed_amount = -parsed_amount
+                elif type == 'income' and parsed_amount < 0:
+                    parsed_amount = abs(parsed_amount)
+            else:
+                # If no type provided, default to expense (negative amount)
+                if parsed_amount > 0:
+                    parsed_amount = -parsed_amount
+            
+            final_amount = parsed_amount
         except ValueError:
             click.echo("Error: Invalid amount format. Use numbers with k (thousands), m (millions), or b (billions)")
             click.echo("Examples: 30k, 1.5m, 2.5k, 100, $50, 100USD")
             return
+    elif type:
+        # If only type is provided without amount, change the sign of existing amount
+        if type == 'expense' and existing.amount > 0:
+            final_amount = -existing.amount
+        elif type == 'income' and existing.amount < 0:
+            final_amount = abs(existing.amount)
     
     if db.update_transaction(
         transaction_id=transaction_id,
-        amount=parsed_amount if parsed_amount is not None else existing.amount,
-        type=type or existing.type,
+        amount=final_amount,
         description=description or existing.description,
         category=category or existing.category,
         source=source or existing.source,
