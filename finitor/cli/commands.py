@@ -232,14 +232,33 @@ def balance(full: bool, currency: Optional[str]):
 @click.option('--type', type=click.Choice(['category', 'source']), help='Summary type')
 @click.option('--month', type=int, help='Month (1-12)')
 @click.option('--year', type=int, help='Year (YYYY)')
+@click.option('--current', is_flag=True, help='Show current month summary')
 @click.option('--start-date', help='Start date (YYYY-MM-DD)')
 @click.option('--end-date', help='End date (YYYY-MM-DD)')
 @click.option('--currency', help='Display summary in specified currency')
-def summary(type: Optional[str], month: Optional[int], year: Optional[int],
+def summary(type: Optional[str], month: Optional[int], year: Optional[int], current: bool,
            start_date: Optional[str], end_date: Optional[str], currency: Optional[str]):
     """View transaction summaries"""
     db = FinanceDB()
     display_currency = currency or db.default_currency
+    
+    # Handle current month flag
+    if current:
+        current_date = datetime.now()
+        month = current_date.month
+        year = current_date.year
+        click.echo(f"Showing current month summary ({year}-{month:02d})")
+    
+    # Validate month if provided
+    if month is not None:
+        if month < 1 or month > 12:
+            click.echo("Error: Month must be between 1 and 12.")
+            return
+        
+        # Default to current year if only month is provided
+        if year is None:
+            year = datetime.now().year
+            click.echo(f"No year specified, using current year: {year}")
     
     if type == 'category':
         summary = db.get_category_summary(start_date, end_date)
@@ -251,12 +270,30 @@ def summary(type: Optional[str], month: Optional[int], year: Optional[int],
         click.echo("\nSource Summary:")
         for source, amount in summary.items():
             click.echo(f"{source}: {format_amount(amount, display_currency)}")
-    elif month and year:
+    elif month is not None:  # Changed from 'month and year' to 'month is not None'
         summary = db.get_monthly_summary(year, month)
-        click.echo(f"\nSummary for {year}-{month:02d}:")
+        
+        # Check if this is current month to provide additional context
+        current_date = datetime.now()
+        is_current_month = (year == current_date.year and month == current_date.month)
+        
+        if is_current_month:
+            click.echo(f"\nSummary for {year}-{month:02d} (Current Month - In Progress):")
+            click.echo(f"As of {current_date.strftime('%Y-%m-%d')}:")
+        else:
+            click.echo(f"\nSummary for {year}-{month:02d}:")
+        
         click.echo(f"Total: {format_amount(summary['total'], display_currency)}")
         click.echo(f"Income: {format_amount(summary['income'], display_currency)}")
         click.echo(f"Expenses: {format_amount(summary['expenses'], display_currency)}")
+        
+        # Show additional info for current month
+        if is_current_month:
+            days_passed = current_date.day
+            days_in_month = (current_date.replace(month=current_date.month % 12 + 1, day=1) - 
+                           current_date.replace(day=1)).days
+            progress = (days_passed / days_in_month) * 100
+            click.echo(f"\nMonth Progress: {days_passed}/{days_in_month} days ({progress:.1f}%)")
 
 @cli.command()
 @click.option('--start-date', help='Start date (YYYY-MM-DD)')
