@@ -65,7 +65,9 @@ def add(amount: str, description: str, type: str, category: Optional[str],
     )
     
     click.echo(f"Transaction added successfully with ID: {transaction_id}")
-    click.echo(f"Amount: {format_amount(parsed_amount, currency)}")
+    # Ensure currency is a non-None str for the type checker
+    display_currency = currency or db.default_currency
+    click.echo(f"Amount: {format_amount(parsed_amount, display_currency)}")
 
 @cli.command()
 @click.option('--type', 'txn_type', type=click.Choice(['income', 'expense']), help='Filter transactions by type (income or expense)')
@@ -271,6 +273,7 @@ def summary(type: Optional[str], month: Optional[int], year: Optional[int], curr
         for source, amount in summary.items():
             click.echo(f"{source}: {format_amount(amount, display_currency)}")
     elif month is not None:  # Changed from 'month and year' to 'month is not None'
+        assert year is not None  # for type checker
         summary = db.get_monthly_summary(year, month)
         
         # Check if this is current month to provide additional context
@@ -450,7 +453,7 @@ def budget(category: str, amount: str, period: str,
     
     # Parse amount with VND shortcuts
     try:
-        parsed_amount = parse_amount(amount)
+        parsed_amount, _ = parse_amount(amount)
     except ValueError:
         click.echo("Error: Invalid amount format. Use numbers with k (thousands), m (millions), or b (billions)")
         click.echo("Examples: 30k, 1.5m, 2.5k, 100")
