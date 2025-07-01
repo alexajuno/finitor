@@ -74,7 +74,7 @@ def add(amount: str, description: str, type: str, category: Optional[str],
 @click.option('--date', help='View transactions for a specific date (YYYY-MM-DD)')
 @click.option('--id', type=int, help='View specific transaction by ID')
 @click.option('--search', help='Search transactions by description, category, or source')
-@click.option('--full-amounts', is_flag=True, help='Display full amount values without abbreviations')
+@click.option('-f', '--full', '--full-amounts', 'full_amounts', is_flag=True, help='Display full amount values without abbreviations')
 @click.option('--currency', help='Display amounts in specified currency')
 @click.option('-a', '--asc', 'order', flag_value='asc', default='asc', help='Sort transactions in ascending order (earliest first)')
 @click.option('-d', '--desc', 'order', flag_value='desc', help='Sort transactions in descending order (latest first)')
@@ -300,7 +300,7 @@ def summary(type: Optional[str], month: Optional[int], year: Optional[int], curr
 @click.option('--end-date', help='End date (YYYY-MM-DD)')
 @click.option('--date', help='Export transactions for a specific date (YYYY-MM-DD)')
 @click.option('--format', 'export_format', type=click.Choice(['json', 'csv', 'excel', 'html']), default='json', help='Export format')
-@click.option('--full-amounts', is_flag=True, help='Export with full amount values without abbreviations')
+@click.option('--full', '--full-amounts', 'full_amounts', is_flag=True, help='Export with full amount values without abbreviations')
 @click.option('--currency', help='Display amounts in specified currency')
 def export(start_date: Optional[str], end_date: Optional[str], date: Optional[str], export_format: str, full_amounts: bool, currency: Optional[str]):
     """Export transactions to a file in specified format"""
