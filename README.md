@@ -30,6 +30,14 @@ cd finitor
 pip install -r requirements.txt
 ```
 
+### (Optional) Google Drive upload
+
+To enable `--drive` uploads you must:
+
+1. Enable the Google Drive API in Google Cloud Console and create an **OAuth client (Desktop)**.
+2. Download the `credentials.json` for the client and save it as `~/.finitor_credentials.json`.
+3. First time you run `--drive` a browser window will open for consent; a token is cached in `~/.finitor_drive_token.pickle` for subsequent runs.
+
 ## Usage
 
 ### Command Line Mode
@@ -62,7 +70,7 @@ python -m finitor view --start-date "2024-03-01" --end-date "2024-03-31"
 python -m finitor view --date "2024-03-15"
 
 # View transactions with full amount values
-python -m finitor view --full-amounts
+python -m finitor view --full
 
 # View transactions in a different currency
 python -m finitor view --currency USD
@@ -134,7 +142,11 @@ python -m finitor export --start-date "2024-03-01" --end-date "2024-03-31" --for
 python -m finitor export --date "2024-03-15" --format excel
 
 # Export with full amount values
-python -m finitor export --date "2024-03-15" --format csv --full-amounts
+python -m finitor export --date "2024-03-15" --format csv --full
+
+# Export and upload directly to Google Drive
+python -m finitor export --start-date "2024-03-01" --end-date "2024-03-31" \
+                    --format csv --drive --drive-folder YOUR_FOLDER_ID
 ```
 
 ### Interactive Mode
@@ -159,20 +171,20 @@ finitor/
 ├── setup.py
 └── finitor/
     ├── __init__.py
-    ├── cli/
-    │   ├── __init__.py
-    │   ├── commands.py
-    │   ├── interactive.py
-    │   └── utils.py
-    ├── core/
-    │   ├── __init__.py
-    │   ├── database.py
-    │   ├── currency.py
-    │   └── models.py
-    └── utils/
-        ├── __init__.py
-        ├── date.py
-        ├── validators.py
+    │   ├── cli/
+    │   │   ├── __init__.py
+    │   │   ├── commands.py
+    │   │   ├── interactive.py
+    │   │   └── utils.py
+    │   ├── core/
+    │   │   ├── __init__.py
+    │   │   ├── database.py
+    │   │   ├── currency.py
+    │   │   └── models.py
+    │   └── utils/
+    │       ├── __init__.py
+    │       ├── date.py
+    │       ├── validators.py
 ```
 
 ## Currency Support

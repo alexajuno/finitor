@@ -8,6 +8,7 @@ import json
 import pandas as pd
 import requests
 from ..core.models import Transaction
+from ..utils.gdrive import upload_to_drive
 
 # Load configuration for default settings
 import os
@@ -305,7 +306,9 @@ def summary(type: Optional[str], month: Optional[int], year: Optional[int], curr
 @click.option('--format', 'export_format', type=click.Choice(['json', 'csv', 'excel', 'html']), default='json', help='Export format')
 @click.option('--full', '--full-amounts', 'full_amounts', is_flag=True, help='Export with full amount values without abbreviations')
 @click.option('--currency', help='Display amounts in specified currency')
-def export(start_date: Optional[str], end_date: Optional[str], date: Optional[str], export_format: str, full_amounts: bool, currency: Optional[str]):
+@click.option('--drive', is_flag=True, help='Upload the exported file to Google Drive')
+@click.option('--drive-folder', help='Google Drive folder ID to upload into')
+def export(start_date: Optional[str], end_date: Optional[str], date: Optional[str], export_format: str, full_amounts: bool, currency: Optional[str], drive: bool, drive_folder: Optional[str]):
     """Export transactions to a file in specified format"""
     db = FinanceDB()
     # Determine date range
@@ -357,6 +360,14 @@ def export(start_date: Optional[str], end_date: Optional[str], date: Optional[st
         df.to_html(filename, index=False)
 
     click.echo(f"\nTransactions exported to {filename}")
+
+    # Optionally upload to Google Drive
+    if drive:
+        try:
+            drive_file_id = upload_to_drive(filename, folder_id=drive_folder)
+            click.echo(f"Uploaded to Google Drive (file ID: {drive_file_id})")
+        except Exception as e:
+            click.echo(f"Error uploading to Google Drive: {e}")
 
 # Add new currency commands
 @cli.command()
